@@ -2,7 +2,6 @@
 #include "mic_gpio.h"
 
 
-
 #define MIC_MAJOR	0
 #define DEVICE_NAME		"mic-ifly"
 #define MIC_I2C_NAME	"mic_xf"
@@ -23,7 +22,6 @@ static unsigned char mem_tmp[5];
 extern int gpio_request(unsigned gpio, const char *label);
 extern int gpio_direction_output(unsigned, int);
 
-#if 1
 static int mic_hardware_reset(void)
 {
 //	GPIO_MultiFun_Set(GPIO_MIC_RESET, PINMUX_LEVEL_GPIO_END_FLAG);
@@ -63,33 +61,33 @@ static int mic_software_init(void)
 	}
 	else if(version == 2)
 	{
-//		VCEnableNR(&cmd, 0); // å…³é—­é™å™ª
+//		VCEnableNR(&cmd, 0); // ¹Ø±Õ½µÔë
 
-//		VCEnableNR(&cmd, 1); // æ‰“å¼€é™å™ª
+//		VCEnableNR(&cmd, 1); // ´ò¿ª½µÔë
 	}
 	else if(version == 3 || version == 4) 
 	{
 		printk("Get MIC Hardware Version is %d!\n", version);	
 
-		/* è®¾ç½®å½“å‰çš„å·¥ä½œæ¨¡å¼ */
+		/* ÉèÖÃµ±Ç°µÄ¹¤×÷Ä£Ê½ */
 		ret_val = VCChangeWorkMode(&cmd, WORK_MODE_TOPLIGHT);
 		if(ret_val != 0)
 		{
 			printk("Set MIC WORK_MODE_TOPLIGHT Error! %d\n", ret_val);
 		}
-		ret_val = VCGetWorkMode(&cmd);	// æ£€æŸ¥å½“å‰çš„å·¥ä½œæ¨¡å¼æ˜¯å¦ä¸ºé¡¶ç¯æ¨¡å¼
+		ret_val = VCGetWorkMode(&cmd);	// ¼ì²éµ±Ç°µÄ¹¤×÷Ä£Ê½ÊÇ·ñÎª¶¥µÆÄ£Ê½
 		if (ret_val != WORK_MODE_TOPLIGHT)
 		{
 			printk("Get MIC WORK_MODE_TOPLIGHT Error!\n");
 		}
 
-		/* é»˜è®¤æ‰€æœ‰åŠŸèƒ½å…³é—­ç›´æ¥å½•éŸ³*/
+		/* Ä¬ÈÏËùÓĞ¹¦ÄÜ¹Ø±ÕÖ±½ÓÂ¼Òô*/
 		ret_val = VCChangeFunc(&cmd, FUNC_MODE_PASSBY);	
 		if (ret_val != 0)
 		{
 			printk("Set MIC FUNC_MODE_PASSBY Error! %d\n", ret_val);
 		}
-		/*  æ£€æŸ¥å½“å‰çš„åŠŸèƒ½*/
+		/*  ¼ì²éµ±Ç°µÄ¹¦ÄÜ*/
 		ret_val = VCGetFunc(&cmd);
 		if (ret_val != FUNC_MODE_PASSBY)
 		{
@@ -100,9 +98,6 @@ static int mic_software_init(void)
 
 	return 1;
 }
-#endif
-
-
 
 static int bytes_to_int(unsigned char buf[], int start)
 {
@@ -133,19 +128,22 @@ static int mic_cdev_open(struct inode *inode,struct file *filp)
 #define IOCTL_CMD_I2C_FUNC_MODE_PHONE		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_PHONE)
 #define IOCTL_CMD_I2C_FUNC_MODE_WAKEUP		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_WAKEUP)
 
-#define GET_MIC_VERSION				1
-#define GET_MIC_WAITREADY			2
-#define SET_MIC_WOEKMODE			3
-#define SET_MIC_FUNCTION			4
-#define SET_MIC_DACVOLUME			5
+#define GET_MIC_VERSION				0x80
+#define GET_MIC_WAITREADY			(GET_MIC_VERSION + 1)
+#define GET_MIC_CURFUNCTION			(GET_MIC_WAITREADY + 1)
+#define SET_MIC_FUNCTION			(GET_MIC_CURFUNCTION + 1)
+#define SET_MIC_WOEKMODE			(SET_MIC_WOEKMODE + 1)
+#define SET_MIC_DACVOLUME			(SET_MIC_FUNCTION + 1)
+#define SET_MIC_RESET				(SET_MIC_DACVOLUME + 1)
 
 
 static ssize_t mic_cdev_read(struct file *filp,char __user *buf,size_t count, loff_t *ppos)
 {
-	int cmd_type, ret;
+	int ret;
+	unsigned int cmd_type;
 	Command_t cmd ={0};
 
-	cmd_type = mem_tmp[0];
+	cmd_type = (mem_tmp[0]<<8)|(mem_tmp[1]);
 	switch(cmd_type)
 	{
 		case GET_MIC_VERSION:
@@ -156,77 +154,56 @@ static ssize_t mic_cdev_read(struct file *filp,char __user *buf,size_t count, lo
 			ret = VCWaitReady(&cmd, 0);
 			printk("MIC Module %s Wait Ready!\n", ret?"":"Not" );
 			break;
+		case GET_MIC_CURFUNCTION:
+			ret = VCGetFunc(&cmd);
+			if (ret != (command&0x0F))
+			{
+				// ´íÎó´¦Àí
+				printk("The Func now is %d!\n", ret);
+			}
+			break;
 		default:
 			break;
 	}
 
-	mem_tmp[1] = ret;
+	mem_tmp[2] = ret;
 //	int_to_bytes(ret, mem_tmp, 1);
 	if (copy_to_user(buf, (void*) mem_tmp, 5))
 	{
 		return -EFAULT;
 	}
-#if 0
-	Command_t cmd ={0};
-	int version = 0;
-	int ret_val = 0;
-	printk("mic_read=============\n");
 
-	ret_val = VCWaitReady(&cmd, 0);
-	VCReset(&cmd);
-
-	/* å…³é—­æ‰€æœ‰åŠŸèƒ½ï¼Œä»…æä¾›å½•éŸ³åŠŸèƒ½ */
-//	VCChangeFunc(i2c_client, &cmd, IV_I2C_CMD_FUNC_PASSBY);
-//	VCChangeFunc(mic_i2c_client, &cmd, IV_I2C_CMD_FUNC_PASSBY);
-	version = VCGetVersion(&cmd);
-	printk("version=%d\n", version);
-
-	/* è®¾ç½®å½“å‰çš„å·¥ä½œæ¨¡å¼ */
-	ret_val = VCChangeWorkMode(&cmd, WORK_MODE_TOPLIGHT);
-	printk("VCChangeWorkMode=%d\n", ret_val);
-	/* æ£€æŸ¥å½“å‰çš„å·¥ä½œæ¨¡å¼ */
-	ret_val = VCGetWorkMode(&cmd);
-	printk("VCGetWorkMode=%d\n", ret_val);
-	/*  æ£€æŸ¥å½“å‰çš„åŠŸèƒ½*/
-	ret_val = VCGetFunc(&cmd);
-	printk("VCGetFunc=%d\n", ret_val);
-
-#endif
-	return 5;
+	return count;
 }
 
-
-
-
-#if 1
 static long mic_cdev_ioctl(struct file * filep, unsigned int command, unsigned long arg)
 {
 	unsigned long ret = -1;
 	Command_t cmd ={0};
 
-	/* åŠŸèƒ½åˆ‡æ¢*/
+	/* ¹¦ÄÜÇĞ»»*/
 	switch(command)
 	{
 		case IOCTL_CMD_I2C_FUNC_MODE_PASSBY:
-			/* å…³é—­æ‰€æœ‰åŠŸèƒ½ï¼Œä»…æä¾›å½•éŸ³åŠŸèƒ½ */
+			/* ¹Ø±ÕËùÓĞ¹¦ÄÜ£¬½öÌá¹©Â¼Òô¹¦ÄÜ */
 			ret = VCChangeFunc(&cmd, FUNC_MODE_PASSBY);
 			break;
 		case IOCTL_CMD_I2C_FUNC_MODE_NOISECLEAN:
-			/* åˆ‡æ¢åˆ°é™å™ªåŠŸèƒ½*/
+			/* ÇĞ»»µ½½µÔë¹¦ÄÜ*/
 			ret = VCChangeFunc(&cmd, FUNC_MODE_NOISECLEAN);
 			break;
 		case IOCTL_CMD_I2C_FUNC_MODE_PHONE:
-			/* æ¢åˆ°ç”µè¯å›å£°æ¶ˆé™¤åŠŸèƒ½*/
+			/* »»µ½µç»°»ØÉùÏû³ı¹¦ÄÜ*/
 			ret = VCChangeFunc(&cmd, FUNC_MODE_PHONE);
 			break;
 		case IOCTL_CMD_I2C_FUNC_MODE_WAKEUP:
-			/* åˆ‡æ¢åˆ°å”¤é†’å›å£°æ¶ˆé™¤åŠŸèƒ½*/
-			ret = VCConfigWakeupID(&cmd, 0);			// è®¾ç½®æœ¬åœ°å”¤é†’è¯â€œä½ å¥½è¯­éŸ³åŠ©ç†â€
-			ret = VCConfigWakeupGpio(&cmd, 1, 480);		// é…ç½®æœ¬åœ°å”¤é†’çš„å”¤é†’ä¿¡å·ä¸ºé«˜ç”µå¹³æœ‰æ•ˆï¼Œä¿¡å·é•¿480ms
+			/* ÇĞ»»µ½»½ĞÑ»ØÉùÏû³ı¹¦ÄÜ*/
+			ret = VCConfigWakeupID(&cmd, 0);			// ÉèÖÃ±¾µØ»½ĞÑ´Ê¡°ÄãºÃÓïÒôÖúÀí¡±
+			ret = VCConfigWakeupGpio(&cmd, 1, 480);		// ÅäÖÃ±¾µØ»½ĞÑµÄ»½ĞÑĞÅºÅÎª¸ßµçÆ½ÓĞĞ§£¬ĞÅºÅ³¤480ms
 			ret = VCChangeFunc(&cmd, FUNC_MODE_WAKEUP);
 			break;
 		default:
-			/* é»˜è®¤åˆ‡æ¢åˆ°é™å™ªåŠŸèƒ½*/
+			/* Ä¬ÈÏÇĞ»»µ½½µÔë¹¦ÄÜ*/
 			ret = VCChangeFunc(&cmd, FUNC_MODE_NOISECLEAN);
 			break;
 	}
@@ -235,11 +212,11 @@ static long mic_cdev_ioctl(struct file * filep, unsigned int command, unsigned l
 	{
 		printk("Set Func Error!\n");
 	}
-	/*  æ£€æŸ¥å½“å‰çš„åŠŸèƒ½*/
+	/*  ¼ì²éµ±Ç°µÄ¹¦ÄÜ*/
 	ret = VCGetFunc(&cmd);
 	if (ret != (command&0x0F))
 	{
-		// é”™è¯¯å¤„ç†
+		// ´íÎó´¦Àí
 		printk("Get Func is not the same of Set!\n");
 	}
 	
@@ -249,15 +226,15 @@ static long mic_cdev_ioctl(struct file * filep, unsigned int command, unsigned l
 	}
 	return 0;
 }
-#endif
 
 static ssize_t mic_cdev_write(struct file *filp, const char __user *buf, size_t count, loff_t *ppos)
 {
 	int cmd_type, mode_type, ret;
 	Command_t cmd ={0};
 
-	memset(mem_tmp, 0, 5);
-	if (copy_from_user(mem_tmp, buf, 5))
+	/* »ñÈ¡Êµ¼Ê³¤¶È */
+	memset(mem_tmp, 0, count);
+	if (copy_from_user(mem_tmp, buf, count))
 	{
 		return -EFAULT;
 	}
@@ -277,70 +254,25 @@ static ssize_t mic_cdev_write(struct file *filp, const char __user *buf, size_t 
 				ret = VCChangeFunc(&cmd, mode_type);
 				if(mode_type == FUNC_MODE_WAKEUP)
 				{
-					VCConfigWakeupID(&cmd, 0);			// è®¾ç½®æœ¬åœ°å”¤é†’è¯â€œä½ å¥½è¯­éŸ³åŠ©ç†â€
-					VCConfigWakeupGpio(&cmd, 1, 480);	// é…ç½®æœ¬åœ°å”¤é†’çš„å”¤é†’ä¿¡å·ä¸ºé«˜ç”µå¹³æœ‰æ•ˆï¼Œä¿¡å·é•¿480ms
+					VCConfigWakeupID(&cmd, 0);			// ÉèÖÃ±¾µØ»½ĞÑ´Ê¡°ÄãºÃÓïÒôÖúÀí¡±
+					VCConfigWakeupGpio(&cmd, 1, 480);	// ÅäÖÃ±¾µØ»½ĞÑµÄ»½ĞÑĞÅºÅÎª¸ßµçÆ½ÓĞĞ§£¬ĞÅºÅ³¤480ms
 				}
 				break;
 			case SET_MIC_DACVOLUME:
 				mode_type = (cmd_dac_gain_id)mem_tmp[1];
 				ret = VCSetDACVolume(&cmd, mode_type);
 				break;
+			case SET_MIC_RESET:
+				mic_hardware_reset();
+				ret = mic_software_init();
+				printk("MIC RESET %s.\n", ret?"success":"fail");
+				break;
 			default:
 				break;
 		}
 		printk("Set MIC %d %s.\n", mode_type, (ret == 0)?"success":"fail");
 	}
-#if	0
-	unsigned tmp = count;
-	unsigned long i = 0;
-	memset(mem, 0, tmp);
 
-	if (copy_from_user(mem, buf, tmp))
-	{
-		printk(KERN_ERR " %s copy buf data from user error. \n", __FUNCTION__);
-		return -EFAULT;
-	}
-
-	type = k_buf[0];
-
-	if(strncmp(buf, "10", 2) == 0)
-	{
-		gpio_set_value(GPIO_MIC_RESET, 0);
-		printk("set reset pin low\n");
-	}
-	if(strncmp(buf, "11", 2) == 0)
-	{
-		gpio_set_value(GPIO_MIC_RESET, 1);
-		printk("set reset pin hight\n");
-	}
-	else if(strncmp(buf, "mic_wait", 8) == 0)
-	{
-		ret = VCWaitReady(&cmd, 0);
-		printk("VCWaitReady : ret = %d\n", ret);
-	}
-	else if(strncmp(buf, "mic_reset", 9) == 0)
-	{
-		ret = VCReset(&cmd);
-		printk("VCReset : ret = %d\n", ret);
-	}
-	else if(strncmp(buf, "mic_ver", 9) == 0)
-	{
-		ret = VCGetVersion(&cmd);
-		printk("version=%d\n", ret);
-	}
-
-	switch(type)
-	{
-		case 10:
-			gpio_set_value(GPIO_MIC_RESET, 0);
-			printk("set reset pin low\n");
-			break;
-		case 11:
-			gpio_set_value(GPIO_MIC_RESET, 1);
-			printk("set reset pin hight\n");
-			break;
-	}
-#endif
 	return count;
 }
 
@@ -392,7 +324,6 @@ static int mic_cdev_init(void)
 	device_create(globalmem_cdev_class, NULL, devno, NULL, name);
 	return 0;
 }
-
 
 
 static ssize_t mic_show(struct device *dev,struct device_attribute *attr, char *buf)
@@ -454,8 +385,8 @@ static ssize_t mic_store(struct device *dev, struct device_attribute *attr, cons
 	}
 	else if(strncmp(buf, "mic_wakeup", 10) == 0)
 	{
-		ret = VCConfigWakeupID(&cmd, 0);			// è®¾ç½®æœ¬åœ°å”¤é†’è¯â€œä½ å¥½è¯­éŸ³åŠ©ç†â€
-		ret = VCConfigWakeupGpio(&cmd, 1, 480);		// é…ç½®æœ¬åœ°å”¤é†’çš„å”¤é†’ä¿¡å·ä¸ºé«˜ç”µå¹³æœ‰æ•ˆï¼Œä¿¡å·é•¿480ms
+		ret = VCConfigWakeupID(&cmd, 0);			// ÉèÖÃ±¾µØ»½ĞÑ´Ê¡°ÄãºÃÓïÒôÖúÀí¡±
+		ret = VCConfigWakeupGpio(&cmd, 1, 480);		// ÅäÖÃ±¾µØ»½ĞÑµÄ»½ĞÑĞÅºÅÎª¸ßµçÆ½ÓĞĞ§£¬ĞÅºÅ³¤480ms
 		ret = VCChangeFunc(&cmd, FUNC_MODE_WAKEUP);
 		printk("Set MIC FUNC_MODE_WAKEUP %s.\n", (ret == 0)?"success":"fail");
 	}
@@ -561,7 +492,6 @@ static void __exit mic_module_exit(void)
 	unregister_chrdev_region(MKDEV(globalmem_major, 0), 1);
 	i2c_del_driver(&mic_dirver);
 }
-
 
 module_init(mic_module_init);
 module_exit(mic_module_exit);

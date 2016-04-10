@@ -339,7 +339,7 @@ bool VCWaitReady(Command_t * command, int msecond)
 }
 
 
-// \B8\B4位\B2\D9\D7\F7\BA\C4时1s
+// 复位操作耗时1s
 int VCReset(Command_t * command)
 {
 	int ntry = 3;
@@ -372,7 +372,7 @@ int VCReset(Command_t * command)
 //		ret  = send_cmd(command, APP_ID_STRM, STREAMER_APP_MODULE_APP_ENABLE, 2);
 		if (ret < 0) continue;
 		
-		mdelay(1000);// \B8\B4位\BA\F3要\B5\C81s\B2\C5\C4懿\D9\D7\F7\BE\BB\D2\F4模\BF\E9,\D5\E2\C0\EF\D3\C3\C1\CB\D7\E8\C8\FB式\B5却\FD
+		mdelay(1000);// 复位后要等1s才能操作净音模块,这里用了阻塞式等待
 		
 		//check watchdog
 		ret  = send_cmd(command, APP_ID_CAPT|capt_nr, CMD_GET(IVNR_CMD_WATCHDOG), 0);
