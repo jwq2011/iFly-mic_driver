@@ -1,36 +1,48 @@
 
 #include "mic_gpio.h"
 
-
 #define MIC_MAJOR	0
 #define DEVICE_NAME		"mic-ifly"
 #define MIC_I2C_NAME	"mic_xf"
 #define MIC_NAME_SIZE	20
 #define MIC_I2C_ADDRESS_LOW	0x47
 
+#define MIC_CMD_CTL_FUNC_MASK				0x80
+#define IOCTL_CMD_I2C_FUNC_MODE_PASSBY		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_PASSBY)
+#define IOCTL_CMD_I2C_FUNC_MODE_NOISECLEAN	(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_NOISECLEAN)
+#define IOCTL_CMD_I2C_FUNC_MODE_PHONE		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_PHONE)
+#define IOCTL_CMD_I2C_FUNC_MODE_WAKEUP		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_WAKEUP)
+
+#define GET_MIC_VERSION				0x80
+#define GET_MIC_WAITREADY			(GET_MIC_VERSION + 1)
+#define GET_MIC_CURFUNCTION			(GET_MIC_WAITREADY + 1)
+#define SET_MIC_FUNCTION			(GET_MIC_CURFUNCTION + 1)
+#define SET_MIC_WOEKMODE			(SET_MIC_FUNCTION + 1)
+#define SET_MIC_DACVOLUME			(SET_MIC_WOEKMODE + 1)
+#define SET_MIC_RESET				(SET_MIC_DACVOLUME + 1)
+
+#define GPIO_MIC_RESET	PIN_44_GPIO44
+
+static unsigned char mem_tmp[5];
 static int globalmem_major = MIC_MAJOR;
+
+struct cdev	cdev;
+struct class *globalmem_cdev_class;
 struct i2c_client *mic_i2c_client = NULL;
 EXPORT_SYMBOL(mic_i2c_client);
 
-struct class *globalmem_cdev_class;
-struct cdev	cdev;
-
-static unsigned char mem_tmp[5];
-
-
-#define GPIO_MIC_RESET	PIN_44_GPIO44
 extern int gpio_request(unsigned gpio, const char *label);
 extern int gpio_direction_output(unsigned, int);
 
 static int mic_hardware_reset(void)
 {
 //	GPIO_MultiFun_Set(GPIO_MIC_RESET, PINMUX_LEVEL_GPIO_END_FLAG);
-	gpio_request(GPIO_MIC_RESET, "MIC_RST");
+	gpio_request(GPIO_MIC_RESET, "MIC_IFLY_RST");
 	gpio_direction_output(GPIO_MIC_RESET, 0);	/* MIC Low Enable */
 	gpio_set_value(GPIO_MIC_RESET, 0);
 	mdelay(200);
 	gpio_set_value(GPIO_MIC_RESET, 1);
-	printk(KERN_INFO "mic-gpio init ok ...\r\n");
+	printk(KERN_INFO "mic-ifly-gpio init ok ...\r\n");
 
 	return 0;
 }
@@ -93,26 +105,9 @@ static int mic_software_init(void)
 		{
 			printk("Get MIC FUNC_MODE_PASSBY Error!\n");
 		}
-		
 	}
 
 	return 1;
-}
-
-static int bytes_to_int(unsigned char buf[], int start)
-{
-	int n = 0;
-	n = ((int) buf[start]) << 24 | ((int) buf[start + 1]) << 16
-	        | ((int) buf[start + 2]) << 8 | ((int) buf[start + 3]);
-	return n;
-}
-
-static void int_to_bytes(int n, unsigned char buf[], int start)
-{
-	buf[start] = n >> 24;
-	buf[start + 1] = n >> 16;
-	buf[start + 2] = n >> 8;
-	buf[start + 3] = n;
 }
 
 static int mic_cdev_open(struct inode *inode,struct file *filp)
@@ -122,28 +117,13 @@ static int mic_cdev_open(struct inode *inode,struct file *filp)
 	return 0;
 }
 
-#define MIC_CMD_CTL_FUNC_MASK				0x80
-#define IOCTL_CMD_I2C_FUNC_MODE_PASSBY		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_PASSBY)
-#define IOCTL_CMD_I2C_FUNC_MODE_NOISECLEAN	(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_NOISECLEAN)
-#define IOCTL_CMD_I2C_FUNC_MODE_PHONE		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_PHONE)
-#define IOCTL_CMD_I2C_FUNC_MODE_WAKEUP		(MIC_CMD_CTL_FUNC_MASK|FUNC_MODE_WAKEUP)
-
-#define GET_MIC_VERSION				0x80
-#define GET_MIC_WAITREADY			(GET_MIC_VERSION + 1)
-#define GET_MIC_CURFUNCTION			(GET_MIC_WAITREADY + 1)
-#define SET_MIC_FUNCTION			(GET_MIC_CURFUNCTION + 1)
-#define SET_MIC_WOEKMODE			(SET_MIC_WOEKMODE + 1)
-#define SET_MIC_DACVOLUME			(SET_MIC_FUNCTION + 1)
-#define SET_MIC_RESET				(SET_MIC_DACVOLUME + 1)
-
-
 static ssize_t mic_cdev_read(struct file *filp,char __user *buf,size_t count, loff_t *ppos)
 {
 	int ret;
 	unsigned int cmd_type;
 	Command_t cmd ={0};
 
-	cmd_type = (mem_tmp[0]<<8)|(mem_tmp[1]);
+	cmd_type = mem_tmp[0];
 	switch(cmd_type)
 	{
 		case GET_MIC_VERSION:
@@ -156,7 +136,7 @@ static ssize_t mic_cdev_read(struct file *filp,char __user *buf,size_t count, lo
 			break;
 		case GET_MIC_CURFUNCTION:
 			ret = VCGetFunc(&cmd);
-			if (ret != (command&0x0F))
+			if (ret != (cmd_type&0x0F))
 			{
 				// ´íÎó´¦Àí
 				printk("The Func now is %d!\n", ret);
@@ -166,9 +146,10 @@ static ssize_t mic_cdev_read(struct file *filp,char __user *buf,size_t count, lo
 			break;
 	}
 
-	mem_tmp[2] = ret;
-//	int_to_bytes(ret, mem_tmp, 1);
-	if (copy_to_user(buf, (void*) mem_tmp, 5))
+	mem_tmp[1] = ret;
+//	printk("Get MIC cmd_type=%d, ret=%d\n", cmd_type, ret);
+
+	if (copy_to_user(buf, (void*) mem_tmp, count))
 	{
 		return -EFAULT;
 	}
@@ -244,12 +225,10 @@ static ssize_t mic_cdev_write(struct file *filp, const char __user *buf, size_t 
 		switch(cmd_type)
 		{
 			case SET_MIC_WOEKMODE:
-//				mode_type = (cmd_work_mode_id)bytes_to_int(mem_tmp, 1);
 				mode_type = (cmd_work_mode_id)mem_tmp[1];
 				ret = VCChangeWorkMode(&cmd, mode_type);
 				break;
 			case SET_MIC_FUNCTION:
-//				ret = VCChangeFunc(&cmd, (cmd_func_id)bytes_to_int(mem_tmp, 1));
 				mode_type = (cmd_func_id)mem_tmp[1];
 				ret = VCChangeFunc(&cmd, mode_type);
 				if(mode_type == FUNC_MODE_WAKEUP)
@@ -270,7 +249,10 @@ static ssize_t mic_cdev_write(struct file *filp, const char __user *buf, size_t 
 			default:
 				break;
 		}
-		printk("Set MIC %d %s.\n", mode_type, (ret == 0)?"success":"fail");
+		if((cmd_type >= SET_MIC_FUNCTION) && (cmd_type <= SET_MIC_RESET))
+		{
+			printk("Set MIC %d %s.\n", mode_type, (ret == 0)?"success":"fail");
+		}
 	}
 
 	return count;
@@ -458,7 +440,6 @@ static int __init mic_module_init(void)
 	struct i2c_board_info info;
     struct i2c_adapter *adapter;
     struct i2c_client *client;
-    int ret = 0;
     
 	mic_cdev_init();
 
@@ -497,4 +478,3 @@ module_init(mic_module_init);
 module_exit(mic_module_exit);
 MODULE_DESCRIPTION("MIC control");
 MODULE_AUTHOR("HCN");
-

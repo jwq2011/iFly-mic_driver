@@ -4,7 +4,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := eng
 LOCAL_MODULE:= mic_hal_jni
 
-LOCAL_MODULE_PATH := /home/home/kiwei/android/Mygit/iFly-mic_driver/MIC_HAL_JNI
+LOCAL_MODULE_PATH := /home/jiawq/workspace/SourceSave/git_save/iFly-mic_driver/MIC_HAL_JNI
 
 LOCAL_SRC_FILES:= MicHalService.cpp
    

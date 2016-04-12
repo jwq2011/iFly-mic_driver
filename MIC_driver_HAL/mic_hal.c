@@ -8,17 +8,16 @@ int mic_set(struct mic_control_device_t *dev, int32_t mic_command, int32_t value
 	unsigned long arg;
 	int ret;
 
-	buf[0] = (mic_command|MIC_CMD_CTL_FUNC_MASK) >> 8;
-	buf[1] = (mic_command|MIC_CMD_CTL_FUNC_MASK) & 0xF;
+	buf[0] = (mic_command|MIC_CMD_CTL_FUNC_MASK);
 
 	switch(mic_command)
 	{
 		case GET_MIC_VERSION:
 		case GET_MIC_WAITREADY:
 		case GET_MIC_CURFUNCTION:
-			write(dev_file, buf, 2);
+			write(dev_file, buf, 1);
 			read(dev_file, buf, 5);
-			ret = buf[2];
+			ret = buf[1];
 			break;
 		case SET_MIC_FUNCTION:
 			ret = ioctl(dev_file, value, arg);
@@ -26,8 +25,7 @@ int mic_set(struct mic_control_device_t *dev, int32_t mic_command, int32_t value
 		case SET_MIC_WOEKMODE:
 		case SET_MIC_DACVOLUME:
 		case SET_MIC_RESET:
-			buf[3] = value >> 8;
-			buf[4] = value & 0xF;
+			buf[1] = value & 0xFF;
 			ret = write(dev_file, buf, 5);
 			break;
 		default:
@@ -45,7 +43,7 @@ int mic_fun_switch(struct mic_control_device_t *dev, int32_t mic, int32_t value)
 static int mic_init_gpm(void)
 {
 	unsigned char buf[5];
-	buf[0] = SET_MIC_RESET;
+	buf[0] = (SET_MIC_RESET|MIC_CMD_CTL_FUNC_MASK);
 	write(dev_file, buf, 5);
 
 	return 0;

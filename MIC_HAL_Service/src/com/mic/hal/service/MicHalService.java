@@ -1,4 +1,4 @@
-package com.android.mic.hal.service;
+package com.mic.hal.service;
   
 
 public class MicHalService
@@ -30,7 +30,7 @@ public class MicHalService
 	//  native method 
 	private native boolean _init();
 
-	private native boolean _set(int led);
+	private native boolean _set(int mic, int value);
 
 	static
 	{

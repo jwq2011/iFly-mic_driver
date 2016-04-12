@@ -50,12 +50,13 @@ static jboolean mic_init(JNIEnv *env, jclass clazz)
 
 static const JNINativeMethod methods[] = {
 	{ "_init", "()Z", (void *) mic_init },
-	{ "_set", "(I)Z", (void *) mic_Set },
+	{ "_set", "(II)Z", (void *) mic_Set },
 };
 
 int register_mic_hal_jni(JNIEnv *env)
 {
-	static const char* const kClassName = "mobile/android/mic/hal/service/MicHalService";
+//	static const char* const kClassName = "mobile/android/mic/hal/service/MicHalService";
+	static const char* const kClassName = "com/example/test/MicHalService";
 
 	jclass clazz;
 
