@@ -319,6 +319,7 @@ int VCGetVersion(Command_t * command)
 	}
 	return command->data[0];
 }
+EXPORT_SYMBOL(VCGetVersion);
 
 bool VCWaitReady(Command_t * command, int msecond)
 {
@@ -337,7 +338,7 @@ bool VCWaitReady(Command_t * command, int msecond)
 	}
 	return (0);
 }
-
+EXPORT_SYMBOL(VCWaitReady);
 
 // ¸´Î»²Ù×÷ºÄÊ±1s
 int VCReset(Command_t * command)
@@ -383,8 +384,8 @@ int VCReset(Command_t * command)
 	
 	return 0;
 }
+EXPORT_SYMBOL(VCReset);
 
-#if 1
 int VCChangeWorkMode(Command_t *command, cmd_work_mode_id work_mode_id)
 {
 	int ret_val;
@@ -404,7 +405,7 @@ int VCChangeWorkMode(Command_t *command, cmd_work_mode_id work_mode_id)
 	ret_val = wait_ret(command);
 	return (0);
 }
-#endif
+EXPORT_SYMBOL(VCChangeWorkMode);
 
 int VCGetWorkMode(Command_t * command)
 {
@@ -418,6 +419,7 @@ int VCGetWorkMode(Command_t * command)
 	}
 	return command->data[0];	
 }
+EXPORT_SYMBOL(VCGetWorkMode);
 
 int VCChangeFunc(Command_t * command, cmd_func_id func_id)
 {
@@ -432,6 +434,7 @@ int VCChangeFunc(Command_t * command, cmd_func_id func_id)
 	ret_val = wait_ret(command);
 	return ret_val;	
 }
+EXPORT_SYMBOL(VCChangeFunc);
 
 int VCGetFunc(Command_t * command)
 {
@@ -445,6 +448,7 @@ int VCGetFunc(Command_t * command)
 	}
 	return command->data[0];	
 }
+EXPORT_SYMBOL(VCGetFunc);
 
 int VCConfigWakeupGpio(Command_t * command, bool key_level, int msecond)
 {
@@ -459,6 +463,7 @@ int VCConfigWakeupGpio(Command_t * command, bool key_level, int msecond)
 	}
 	return (0);
 }
+EXPORT_SYMBOL(VCConfigWakeupGpio);
 
 int VCConfigWakeupID(Command_t * command, int wakeup_id)
 {
@@ -474,6 +479,7 @@ int VCConfigWakeupID(Command_t * command, int wakeup_id)
 	ret_val = wait_ret(command);
 	return ret_val;
 }
+EXPORT_SYMBOL(VCConfigWakeupID);
 
 int VCSetDACVolume(Command_t * command, cmd_dac_gain_id dac_gain_id)
 {
@@ -515,6 +521,7 @@ int VCSetDACVolume(Command_t * command, cmd_dac_gain_id dac_gain_id)
 	}
 	return(0);
 }
+EXPORT_SYMBOL(VCSetDACVolume);
 
 int VCGetWakeupSign(Command_t * command, int * pmsecond)
 {
@@ -601,4 +608,4 @@ int mic_i2cdev_ioctl_rdrw(struct i2c_client *client,
 	printk("mic_i2cdev_ioctl_rdrw:%d, res=%d\n", __LINE__, res);
 	return res;
 }
-
+EXPORT_SYMBOL(mic_i2cdev_ioctl_rdrw);
