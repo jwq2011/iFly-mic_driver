@@ -1,4 +1,4 @@
-package com.mic.hal.service;
+package com.android.mic.hal.service;
 
 import android.app.Activity;
 import android.os.Bundle;

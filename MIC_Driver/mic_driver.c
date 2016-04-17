@@ -533,3 +533,72 @@ int VCGetWakeupSign(Command_t * command, int * pmsecond)
 	return command->data[0];
 }
 
+int mic_i2cdev_ioctl_rdrw(struct i2c_client *client,
+		unsigned long arg)
+{
+	struct i2c_rdwr_ioctl_data rdwr_arg;
+	struct i2c_msg *rdwr_pa;
+	u8 __user **data_ptrs;
+	int i, res;
+
+	if (copy_from_user(&rdwr_arg,
+			   (struct i2c_rdwr_ioctl_data __user *)arg,
+			   sizeof(rdwr_arg)))
+		return -EFAULT;
+	printk("mic_i2cdev_ioctl_rdrw:%d, res=%d\n", __LINE__, res);
+	/* Put an arbitrary limit on the number of messages that can
+	 * be sent at once */
+	if (rdwr_arg.nmsgs > I2C_RDRW_IOCTL_MAX_MSGS)
+		return -EINVAL;
+	printk("mic_i2cdev_ioctl_rdrw:%d, res=%d\n", __LINE__, res);
+	rdwr_pa = memdup_user(rdwr_arg.msgs,
+			      rdwr_arg.nmsgs * sizeof(struct i2c_msg));
+	if (IS_ERR(rdwr_pa))
+		return PTR_ERR(rdwr_pa);
+	printk("mic_i2cdev_ioctl_rdrw:%d, res=%d\n", __LINE__, res);
+	data_ptrs = kmalloc(rdwr_arg.nmsgs * sizeof(u8 __user *), GFP_KERNEL);
+	if (data_ptrs == NULL) {
+		kfree(rdwr_pa);
+		return -ENOMEM;
+	}
+	printk("mic_i2cdev_ioctl_rdrw:%d, res=%d\n", __LINE__, res);
+	res = 0;
+	for (i = 0; i < rdwr_arg.nmsgs; i++) {
+		/* Limit the size of the message to a sane amount;
+		 * and don't let length change either. */
+		if ((rdwr_pa[i].len > 8192) ||
+		    (rdwr_pa[i].flags & I2C_M_RECV_LEN)) {
+			res = -EINVAL;
+			break;
+		}
+		data_ptrs[i] = (u8 __user *)rdwr_pa[i].buf;
+		rdwr_pa[i].buf = memdup_user(data_ptrs[i], rdwr_pa[i].len);
+		if (IS_ERR(rdwr_pa[i].buf)) {
+			res = PTR_ERR(rdwr_pa[i].buf);
+			break;
+		}
+	}
+	if (res < 0) {
+		int j;
+		for (j = 0; j < i; ++j)
+			kfree(rdwr_pa[j].buf);
+		kfree(data_ptrs);
+		kfree(rdwr_pa);
+		return res;
+	}
+	printk("mic_i2cdev_ioctl_rdrw:%d, res=%d\n", __LINE__, res);
+	res = i2c_transfer(client->adapter, rdwr_pa, rdwr_arg.nmsgs);
+	while (i-- > 0) {
+		if (res >= 0 && (rdwr_pa[i].flags & I2C_M_RD)) {
+			if (copy_to_user(data_ptrs[i], rdwr_pa[i].buf,
+					 rdwr_pa[i].len))
+				res = -EFAULT;
+		}
+		kfree(rdwr_pa[i].buf);
+	}
+	kfree(data_ptrs);
+	kfree(rdwr_pa);
+	printk("mic_i2cdev_ioctl_rdrw:%d, res=%d\n", __LINE__, res);
+	return res;
+}
+

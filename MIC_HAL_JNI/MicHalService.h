@@ -14,7 +14,7 @@ struct mic_control_device_t{
 
 
 #define MIC_HARDWARE_MODULE_ID	"mic_hal"
-#define MIC_DEV_NAME			"/dev/mic-ifly-0"
+//#define MIC_DEV_NAME			"/dev/mic-ifly-0"
 
 #define MIC_CMD_CTL_FUNC_MASK		0x80
 #define GET_MIC_VERSION				0

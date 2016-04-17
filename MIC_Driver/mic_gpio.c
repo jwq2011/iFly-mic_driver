@@ -4,6 +4,11 @@
 #define MIC_MAJOR	0
 #define DEVICE_NAME		"mic-ifly"
 #define MIC_I2C_NAME	"mic_xf"
+
+#define DIR_NAME        "mic_proc"
+#define ENTRY_NAME1		"set_mic"
+#define ENTRY_NAME2		"rw_mic"
+
 #define MIC_NAME_SIZE	20
 #define MIC_I2C_ADDRESS_LOW	0x47
 
@@ -25,6 +30,9 @@
 
 static unsigned char mem_tmp[5];
 static int globalmem_major = MIC_MAJOR;
+
+static struct proc_dir_entry *test_dir = NULL;
+static struct proc_dir_entry *test_entry = NULL;
 
 struct cdev	cdev;
 struct class *globalmem_cdev_class;
@@ -93,17 +101,17 @@ static int mic_software_init(void)
 			printk("Get MIC WORK_MODE_TOPLIGHT Error!\n");
 		}
 
-		/* 默认所有功能关闭直接录音*/
-		ret_val = VCChangeFunc(&cmd, FUNC_MODE_PASSBY);	
+		/* 默认切换到降噪功能*/
+		ret_val = VCChangeFunc(&cmd, FUNC_MODE_NOISECLEAN);	
 		if (ret_val != 0)
 		{
-			printk("Set MIC FUNC_MODE_PASSBY Error! %d\n", ret_val);
+			printk("Set MIC FUNC_MODE_NOISECLEAN Error! %d\n", ret_val);
 		}
 		/*  检查当前的功能*/
 		ret_val = VCGetFunc(&cmd);
-		if (ret_val != FUNC_MODE_PASSBY)
+		if (ret_val != FUNC_MODE_NOISECLEAN)
 		{
-			printk("Get MIC FUNC_MODE_PASSBY Error!\n");
+			printk("Get MIC FUNC_MODE_NOISECLEAN Error!\n");
 		}
 	}
 
@@ -162,9 +170,13 @@ static long mic_cdev_ioctl(struct file * filep, unsigned int command, unsigned l
 	unsigned long ret = -1;
 	Command_t cmd ={0};
 
+	printk("mic_cdev_ioctl:%d\n", command);
+
 	/* 功能切换*/
 	switch(command)
 	{
+		case I2C_RDWR:
+			return mic_i2cdev_ioctl_rdrw(mic_i2c_client, arg);
 		case IOCTL_CMD_I2C_FUNC_MODE_PASSBY:
 			/* 关闭所有功能，仅提供录音功能 */
 			ret = VCChangeFunc(&cmd, FUNC_MODE_PASSBY);
@@ -185,7 +197,7 @@ static long mic_cdev_ioctl(struct file * filep, unsigned int command, unsigned l
 			break;
 		default:
 			/* 默认切换到降噪功能*/
-			ret = VCChangeFunc(&cmd, FUNC_MODE_NOISECLEAN);
+//			ret = VCChangeFunc(&cmd, FUNC_MODE_NOISECLEAN);
 			break;
 	}
 
@@ -201,9 +213,9 @@ static long mic_cdev_ioctl(struct file * filep, unsigned int command, unsigned l
 		printk("Get Func is not the same of Set!\n");
 	}
 	
-	if( copy_to_user((int *)arg, &ret, 1) )
+//	if( copy_to_user((int *)arg, &ret, 1) )
 	{
-		return -EFAULT;
+//		return -EFAULT;
 	}
 	return 0;
 }
@@ -273,6 +285,57 @@ static const struct file_operations cdev_fops =
 	.release		= mic_cdev_close,
 };
 
+static int rdwr_proc_open(struct inode *inode,struct file *filp)
+{	
+	return 0;
+}
+
+static ssize_t rdwr_proc_read(struct file *filp,char __user *buf,size_t count, loff_t *ppos)
+{
+	int ret;
+	unsigned int cmd_type;
+	Command_t cmd ={0};
+
+	if (copy_to_user(buf, (void*) mem_tmp, count))
+	{
+		return -EFAULT;
+	}
+
+	return count;
+}
+
+static ssize_t rdwr_proc_write(struct file *filp, const char __user *buf, size_t count, loff_t *ppos)
+{
+	unsigned char buff[1024];
+	/* 获取实际长度 */
+	memset(buff, 0, count);
+	if (copy_from_user(buff, buf, count))
+	{
+		return -EFAULT;
+	}
+
+	i2c_master_send(mic_i2c_client, buff, count);
+
+	return count;
+}
+
+static int rdwr_proc_close(struct inode *inode,struct file *filp)
+{
+	return 0;
+}
+
+
+static const struct file_operations rdwr_proc_fops =
+{
+	.owner			= THIS_MODULE,
+	.open			= rdwr_proc_open,
+	.read			= rdwr_proc_read,
+	.unlocked_ioctl	= mic_cdev_ioctl,
+	.write			= rdwr_proc_write,
+	.release		= rdwr_proc_close,
+};
+
+#if 0
 static int mic_cdev_init(void)
 {
 	int ret = 0, index = 0;
@@ -306,7 +369,7 @@ static int mic_cdev_init(void)
 	device_create(globalmem_cdev_class, NULL, devno, NULL, name);
 	return 0;
 }
-
+#endif
 
 static ssize_t mic_show(struct device *dev,struct device_attribute *attr, char *buf)
 {
@@ -388,6 +451,33 @@ static struct attribute_group mic_group = {
 	.attrs = mic_attrs,
 };
 
+
+static int globalmem_setup_proc(void)
+{
+	test_dir = proc_mkdir(DIR_NAME, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0)/* 从3.10内核后架构有转变 */
+	test_entry = create_proc_entry(ENTRY_NAME1, 0666, test_dir);
+	test_entry->proc_fops = &cdev_fops;
+#else
+	test_entry = proc_create(ENTRY_NAME1, 0666, test_dir, &cdev_fops);
+#endif
+
+	return 0;
+}
+
+static int app_rdwr_proc(void)
+{
+	test_dir = proc_mkdir(DIR_NAME, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0)/* 从3.10内核后架构有转变 */
+	test_entry = create_proc_entry(ENTRY_NAME2, 0666, test_dir);
+	test_entry->proc_fops = &rdwr_proc_fops;
+#else
+	test_entry = proc_create(ENTRY_NAME2, 0666, test_dir, &rdwr_proc_fops);
+#endif
+
+	return 0;
+}
+
 static int __devinit mic_probe(struct i2c_client *client, const struct i2c_device_id *did)
 {
 	int retval;
@@ -396,6 +486,9 @@ static int __devinit mic_probe(struct i2c_client *client, const struct i2c_devic
 
 	mic_hardware_reset();
 	mic_software_init();
+	globalmem_setup_proc();
+//	app_rdwr_proc();
+
 	retval = sysfs_create_group(&client->dev.kobj, &mic_group);
 	if (retval)
 	{
@@ -411,7 +504,10 @@ static int __devinit mic_probe(struct i2c_client *client, const struct i2c_devic
 static int __devexit mic_remove(struct i2c_client *client)
 {
 	mic_i2c_client = NULL;
-	
+
+	remove_proc_entry(ENTRY_NAME1, test_dir);
+	remove_proc_entry(ENTRY_NAME2, test_dir);
+    remove_proc_entry(DIR_NAME, NULL);
 	sysfs_remove_group(&client->dev.kobj, &mic_group);
 
 	return 0;
@@ -441,7 +537,7 @@ static int __init mic_module_init(void)
     struct i2c_adapter *adapter;
     struct i2c_client *client;
     
-	mic_cdev_init();
+//	mic_cdev_init();
 
 	memset(&info, 0, sizeof(struct i2c_board_info));
 
@@ -476,5 +572,6 @@ static void __exit mic_module_exit(void)
 
 module_init(mic_module_init);
 module_exit(mic_module_exit);
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MIC control");
 MODULE_AUTHOR("HCN");

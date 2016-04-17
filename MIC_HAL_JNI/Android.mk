@@ -6,7 +6,7 @@ LOCAL_MODULE:= mic_hal_jni
 
 LOCAL_MODULE_PATH := /home/jiawq/workspace/SourceSave/git_save/iFly-mic_driver/MIC_HAL_JNI
 
-LOCAL_SRC_FILES:= MicHalService.cpp
+LOCAL_SRC_FILES:= MicHalService.cpp vc_ctrl_api.c vc_i2c_command.c vc_i2c_io_interface.c
    
 
 LOCAL_SHARED_LIBRARIES := \
